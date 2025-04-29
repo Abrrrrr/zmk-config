@@ -1,0 +1,95 @@
+OBJECTS = cooking.o tests.o
+
+# OS identification from: https://stackoverflow.com/questions/714100/os-detecting-makefile
+OS := $(shell uname -s)
+
+ifeq ($(OS), Darwin) 
+  INCLUDE_PATH := /opt/homebrew/Cellar/criterion/2.4.1_1/include
+  LIB_PATH := /opt/homebrew/Cellar/criterion/2.4.1_1/lib
+  CC = gcc-12
+endif
+ifeq ($(OS), Linux) 
+  INCLUDE_PATH := /util/criterion/include
+  LIB_PATH := /util/criterion/lib/x86_64-linux-gnu
+  CC = gcc
+endif
+
+# Source files
+SRC = cooking.c
+TST = tests.c
+GEX = cooking-gprof
+VEX = cooking-valgrind
+TEX = tests
+
+# Compiler flags
+FLAGS = -pg -fprofile-arcs -ftest-coverage
+CFLAGS = -g -O0 -Wall -std=c11 $(FLAGS)
+LINKFLAGS = -L $(LIB_PATH) -I $(INCLUDE_PATH)
+CLIB = -lcriterion
+
+.PHONY: clean
+clean:
+	rm -rf *~ *.o $(GEX) $(TEX) $(VEX) *.dSYM *.gc?? analyze.txt gmon.out callgrind.out.* cooking.c.gcov
+
+# Object builds
+cooking.o: cooking.c cooking.h
+	$(CC) -c $(CFLAGS) -I $(INCLUDE_PATH) $(SRC)
+
+tests.o: tests.c cooking.h
+	$(CC) -c $(CFLAGS) -I $(INCLUDE_PATH) $(TST)
+
+# Executables
+c-exec: cooking.o
+	$(CC) $(CFLAGS) $(LINKFLAGS) -o $(GEX) $(SRC) main.c
+
+c-test: tests.o cooking.o
+	$(CC) $(CFLAGS) $(LINKFLAGS) -o $(TEX) $(SRC) $(TST) $(CLIB)
+
+v-exec: cooking.o
+	$(CC) $(CFLAGS) $(LINKFLAGS) -o $(VEX) $(SRC) main.c
+
+# Run profiling with gprof
+.PHONY: andRunPerformance
+andRunPerformance:
+	make clean
+	make c-exec
+	@echo "******************************************************************************"
+	@echo "** Gathering performance data."
+	@echo "******************************************************************************"
+	./$(GEX)
+	gprof -b ./$(GEX) gmon.out > analyze.txt
+	gcov $(SRC)
+	@echo "******************************************************************************"
+	@echo "** Done!"
+	@echo "** Look at analyze.txt for gprof timing data"
+	@echo "** Look at $(SRC).gcov for gcov annotated source code"
+	@echo "******************************************************************************"
+
+# Run tests with Criterion and coverage
+.PHONY: andRunTests
+andRunTests:
+	make clean
+	make c-test
+	@echo "******************************************************************************"
+	@echo "** Running tests..."
+	@echo "******************************************************************************"
+	./$(TEX)
+	gcov $(SRC)
+	@echo "******************************************************************************"
+	@echo "** Done!"
+	@echo "** Look at $(SRC).gcov for gcov annotated coverage"
+	@echo "******************************************************************************"
+
+# Run program under callgrind
+.PHONY: andRunCallGrind
+andRunCallGrind:
+	make clean
+	make v-exec
+	@echo "******************************************************************************"
+	@echo "** Running under Callgrind (Valgrind)..."
+	@echo "******************************************************************************"
+	valgrind --tool=callgrind ./$(VEX)
+	@echo "******************************************************************************"
+	@echo "** Done!"
+	@echo "** Use callgrind_annotate to interpret callgrind.out.*"
+	@echo "******************************************************************************"
