@@ -14,14 +14,16 @@ ifeq ($(OS), Linux)
   CC = gcc
 endif
 
-# Source files
+CC = gcc
+NO_DEBUG_FLAGS = -c -Wall -std=c11
+DEBUG_FLAGS = -g -c -Wall -std=c11
+FLAGS = $(DEBUG_FLAGS)
+
 SRC = cooking.c
 TST = tests.c
 GEX = cooking-gprof
 VEX = cooking-valgrind
 TEX = tests
-
-# Compiler flags
 FLAGS = -pg -fprofile-arcs -ftest-coverage
 CFLAGS = -g -O0 -Wall -std=c11 $(FLAGS)
 LINKFLAGS = -L $(LIB_PATH) -I $(INCLUDE_PATH)
@@ -29,26 +31,29 @@ CLIB = -lcriterion
 
 .PHONY: clean
 clean:
-	rm -rf *~ *.o $(GEX) $(TEX) $(VEX) *.dSYM *.gc?? analyze.txt gmon.out callgrind.out.* cooking.c.gcov
+	rm -rf *~ *.o $(GEX) $(TEX) $(VEX) *.dSYM *.gc?? analyze.txt gmon.out
 
-# Object builds
 cooking.o: cooking.c cooking.h
-	$(CC) -c $(CFLAGS) -I $(INCLUDE_PATH) $(SRC)
+	gcc -c -g -O0 -Wall -std=c11 $(SRC)
 
 tests.o: tests.c cooking.h
-	$(CC) -c $(CFLAGS) -I $(INCLUDE_PATH) $(TST)
+	gcc -c -g -O0 -Wall -std=c11 -I $(INCLUDE_PATH) $(TST)
 
-# Executables
-c-exec: cooking.o
-	$(CC) $(CFLAGS) $(LINKFLAGS) -o $(GEX) $(SRC) main.c
+main.o: main.c cooking.h
+	$(CC) -c $(CFLAGS) -I $(INCLUDE_PATH) main.c
+
+c-exec: cooking.o main.o
+	$(CC) $(CFLAGS) $(LINKFLAGS) -o $(GEX) cooking.o main.o
 
 c-test: tests.o cooking.o
-	$(CC) $(CFLAGS) $(LINKFLAGS) -o $(TEX) $(SRC) $(TST) $(CLIB)
+
+	gcc -g -O0 -Wall $(FLAGS) $(CFLAGS) -o $(TEX) $(SRC) tests.c $(CLIB)
 
 v-exec: cooking.o
-	$(CC) $(CFLAGS) $(LINKFLAGS) -o $(VEX) $(SRC) main.c
 
-# Run profiling with gprof
+	gcc -g -O0 -Wall $(CFLAGS) -o $(VEX) $(SRC) main.c
+
+
 .PHONY: andRunPerformance
 andRunPerformance:
 	make clean
@@ -62,7 +67,7 @@ andRunPerformance:
 	@echo "******************************************************************************"
 	@echo "** Done!"
 	@echo "** Look at analyze.txt for gprof timing data"
-	@echo "** Look at $(SRC).gcov for gcov annotated source code"
+	@echo "** Look at $(SRC).gcov for gcov annotated source code with execution counts."
 	@echo "******************************************************************************"
 
 # Run tests with Criterion and coverage
@@ -77,7 +82,7 @@ andRunTests:
 	gcov $(SRC)
 	@echo "******************************************************************************"
 	@echo "** Done!"
-	@echo "** Look at $(SRC).gcov for gcov annotated coverage"
+	@echo "** Look at $(SRC).gcov for gcov annotated source code with execution."
 	@echo "******************************************************************************"
 
 # Run program under callgrind
@@ -86,10 +91,9 @@ andRunCallGrind:
 	make clean
 	make v-exec
 	@echo "******************************************************************************"
-	@echo "** Running under Callgrind (Valgrind)..."
+	@echo "** Running program on large file using callgrind. This may take a minute... "
 	@echo "******************************************************************************"
-	valgrind --tool=callgrind ./$(VEX)
+	valgrind --tool=callgrind ./$(VEX) 1000 1000
 	@echo "******************************************************************************"
 	@echo "** Done!"
-	@echo "** Use callgrind_annotate to interpret callgrind.out.*"
-	@echo "******************************************************************************"
+	@echo "** Use callgrind_annotate to interpret the data file."
